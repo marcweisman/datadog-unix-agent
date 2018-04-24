@@ -53,7 +53,8 @@ class Serializer(object):
         return payload, metrics_payload, service_checks_payload
 
     def serialize(self, add_meta):
-        metrics = {'series': self._aggregator.flush()}
+        series, _ = self._aggregator.flush()
+        metrics = {'series': series}
         service_checks = self._aggregator.flush_service_checks()
         events = self._aggregator.flush_events()
 

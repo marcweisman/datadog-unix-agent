@@ -9,6 +9,7 @@ import signal
 import sys
 import time
 import logging
+from threading import Thread, Event
 
 from config import config
 from config.providers import FileConfigProvider
@@ -19,6 +20,36 @@ from collector import Collector
 from aggregator import MetricsAggregator
 from serialize import Serializer
 from forwarder import Forwarder
+from api import APIServer
+
+log = logging.getLogger('agent')
+
+
+class AgentRunner(Thread):
+    def __init__(self, collector, serializer, config):
+        super(AgentRunner, self).__init__()
+        self._collector = collector
+        self._serializer = serializer
+        self._config = config
+        self._event = Event()
+
+    def collection(self):
+        # update the metadata periodically?
+        metadata = get_metadata(get_hostname())
+        self._serializer.submit_metadata(metadata)
+
+        while not self._event.is_set():
+            self._collector.run_checks()
+            self._serializer.serialize_and_push()
+            time.sleep(self._config.get('min_collection_interval'))
+
+    def stop(self):
+        log.info("Stopping Agent Runner...")
+        self._event.set()
+
+    def run(self):
+        log.info("Starting Agent Runner...")
+        self.collection()
 
 
 def init_agent():
@@ -49,17 +80,17 @@ def start():
 
     hostname = get_hostname()
 
-    logging.info("Starting the agent, hostname: %s", hostname)
+    log.info("Starting the agent, hostname: %s", hostname)
 
     # init Forwarder
-    logging.info("Starting the Forwarder")
+    log.info("Starting the Forwarder")
     api_key = config.get('api_key')
     dd_url = config.get('dd_url')
     if not dd_url:
-        logging.error('No Datadog URL configured - cannot continue')
+        log.error('No Datadog URL configured - cannot continue')
         sys.exit(1)
     if not api_key:
-        logging.error('No API key configured - cannot continue')
+        log.error('No API key configured - cannot continue')
         sys.exit(1)
 
     forwarder = Forwarder(
@@ -90,22 +121,25 @@ def start():
     collector.load_check_classes()
     collector.instantiate_checks()
 
+    # instantiate AgentRunner
+    runner = AgentRunner(collector, serializer, config)
+
+    # instantiate API
+    api = APIServer(aggregator, 8888)
+
     def signal_handler(signal, frame):
-        logging.info("SIGINT received: stopping the agent")
-        logging.info("Stopping the forwarder")
+        log.info("SIGINT received: stopping the agent")
+        log.info("Stopping the forwarder")
+        runner.stop()
         forwarder.stop()
-        logging.info("See you !")
+        api.stop()
+        log.info("See you !")
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    # update the metadata periodically?
-    metadata = get_metadata(hostname)
-    serializer.submit_metadata(metadata)
-    while True:
-        collector.run_checks()
-        serializer.serialize_and_push()
-        time.sleep(config.get('min_collection_interval'))
+    runner.start()
+    api.run()  # blocking tornado in main thread
 
 
 if __name__ == "__main__":
