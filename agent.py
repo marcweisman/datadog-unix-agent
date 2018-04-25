@@ -125,7 +125,7 @@ def start():
     runner = AgentRunner(collector, serializer, config)
 
     # instantiate API
-    api = APIServer(aggregator, 8888)
+    api = APIServer(8888, aggregator.stats)
 
     def signal_handler(signal, frame):
         log.info("SIGINT received: stopping the agent")
