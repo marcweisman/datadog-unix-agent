@@ -12,6 +12,7 @@ import logging
 
 from config import config
 from config.providers import FileConfigProvider
+from utils.logs import initialize_logging
 from utils.hostname import get_hostname
 from metadata import get_metadata
 
@@ -19,6 +20,9 @@ from collector import Collector
 from aggregator import MetricsAggregator
 from serialize import Serializer
 from forwarder import Forwarder
+
+# Globals
+log = logging.getLogger('collector')
 
 
 def init_agent():
@@ -28,8 +32,7 @@ def init_agent():
     config.load()
 
     # init log
-    level = logging.getLevelName(config.get("log_level").upper())
-    logging.basicConfig(level=level)
+    initialize_logging('agent')
 
     # add file provider
     file_provider = FileConfigProvider()
