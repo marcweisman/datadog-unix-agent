@@ -93,7 +93,7 @@ class Collector(object):
                                 self._check_instance_signatures.add(signature_hash)
                             except Exception:
                                 log.error("unable to instantiate instance %s for %s",
-                                        instance, check_name)
+                                          instance, check_name)
 
         for check_name in self.CORE_CHECKS:
             if check_name in self._check_instances:
@@ -112,6 +112,10 @@ class Collector(object):
             log.debug('running check %s...', name)
             for check in checks:
                 try:
-                    check.run()
+                    result = check.run()
                 except Exception:
                     log.exception("error for instance: %s", str(check.instance))
+
+                if result:
+                    log.error('There was an error running your %s: %s', name, result.get('message'))
+                    log.error('Traceback %s: %s', name, result.get('traceback'))
